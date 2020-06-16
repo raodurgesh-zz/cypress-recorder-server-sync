@@ -24,7 +24,7 @@
          <button class="btn btn-sm btn-primary btn-outline-primary" @click="togglePause" v-show="isRecording">
             {{pauseButtonText}}
           </button>
-          <input v-model="title" class="testcase-title" placeholder="title"  v-show="!isRecording" />
+          <input :value="title"  @input="updateTitle"  class="testcase-title" placeholder="title"  v-show="!isRecording" />
           <button class="btn btn-sm" @click="toggleRecord" :class="isRecording ? 'btn-danger' : 'btn-primary'">
             {{recordButtonText}}
           </button>
@@ -37,7 +37,7 @@
           <a href="#" v-clipboard:copy='code' @click="setCopying" v-show="code">{{copyLinkText}}</a>
         </div>
          <div class="results-footer" v-show="showResultsTab">
-           <button class="btn btn-sm btn-primary" @click="save" v-show="code">Save to Server</button>
+           <button class="btn btn-sm btn-primary" @click="saveToServer" v-show="code">Save to Server</button>
         </div>
       </div>
       <HelpTab v-show="showHelp"></HelpTab>
@@ -74,7 +74,6 @@ export default {
   },
   mounted() {
     this.loadState(() => {
-      debugger;
       if (this.isRecording) {
         console.debug('opened in recording state, fetching recording events');
         this.$chrome.storage.local.get(['recording', 'code'], ({ recording }) => {
@@ -90,6 +89,11 @@ export default {
     this.bus = this.$chrome.extension.connect({ name: 'recordControls' });
   },
   methods: {
+    updateTitle(e) {
+      this.title = e.target.value;
+      this.storeState();
+    },
+
     updateCode(code) {
       this.code = code;
       this.storeState();
@@ -115,7 +119,7 @@ export default {
       this.storeState();
     },
     start() {
-      this.cleanUp();
+      this.cleanUp({ clearTitle: false });
       console.debug('start recorder, popup app');
       this.bus.postMessage({ action: 'start' });
     },
@@ -141,10 +145,10 @@ export default {
     },
     restart() {
       console.log('restart');
-      this.cleanUp();
+      this.cleanUp({});
       this.bus.postMessage({ action: 'cleanUp' });
     },
-    save() {
+    saveToServer() {
       this.$chrome.storage.local.get('options', ({ options }) => {
         let opt = options;
         let serverUrl = options && options.code && options.code.serverUrl;
@@ -169,7 +173,10 @@ export default {
         }
       });
     },
-    cleanUp() {
+    cleanUp({ clearTitle = true }) {
+      if (clearTitle) {
+        this.title = '';
+      }
       this.recording = this.liveEvents = [];
       this.code = '';
       this.showResultsTab = this.isRecording = this.isPaused = false;
@@ -181,9 +188,8 @@ export default {
       }
     },
     loadState(cb) {
-      this.$chrome.storage.local.get(['controls', 'code'], ({ controls, code }) => {
-        debugger;
-        console.debug('loaded controls', controls);
+      this.$chrome.storage.local.get(['controls', 'code', 'title'], ({ controls, code, title }) => {
+        console.debug('loaded controls', controls, ',title', title);
         if (controls) {
           this.isRecording = controls.isRecording;
           this.isPaused = controls._isPaused;
@@ -192,12 +198,16 @@ export default {
         if (code) {
           this.code = code;
         }
+        if (title) {
+          this.title = title;
+        }
         cb();
       });
     },
     storeState() {
       this.$chrome.storage.local.set({
         code: this.code,
+        title: this.title,
         controls: {
           isRecording: this.isRecording,
           isPaused: this.isPaused,
